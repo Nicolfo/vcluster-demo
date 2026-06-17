@@ -66,11 +66,13 @@ if [[ "$PURGE_DNS" == "1" ]]; then
   fi
 fi
 
-# 1) External-DNS -------------------------------------------------------------
-echo ">> [1] Removing External-DNS"
+# 1) External-DNS + tenant-isolation policy -----------------------------------
+echo ">> [1] Removing External-DNS + tenant-isolation policy"
 $K delete clusterrolebinding external-dns --ignore-not-found
 $K delete clusterrole external-dns --ignore-not-found
 $K delete namespace external-dns --ignore-not-found
+$K delete validatingadmissionpolicybinding vcluster-tenant-ingress-isolation --ignore-not-found
+$K delete validatingadmissionpolicy vcluster-tenant-ingress-isolation --ignore-not-found
 
 # 2) the virtual clusters -----------------------------------------------------
 echo ">> [2] Deleting ${COUNT} vclusters (${PREFIX}-00 .. ${PREFIX}-$(printf '%02d' $((COUNT-1))))"

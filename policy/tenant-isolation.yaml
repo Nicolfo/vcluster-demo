@@ -1,0 +1,67 @@
+# Native ValidatingAdmissionPolicy (k8s >= 1.30) — runs INSIDE the host API server.
+# No Kyverno, no extra pods, no webhook: just these two cluster-scoped objects.
+#
+# Purpose: a tenant is cluster-admin INSIDE their vcluster, so they can create an
+# Ingress with ANY host. The syncer mirrors it to the host namespace (vcluster-<vc>)
+# and the host Traefik routes by Host across ALL namespaces — so without a guard a
+# tenant in ec-00 could publish Host(ec-01.<domain>) and hijack another vcluster's
+# API traffic (bearer tokens!). This policy blocks that at admission on the host.
+#
+# Scope (matchConditions): ONLY Ingresses that live in a vcluster-* namespace AND
+# carry the vcluster sync label. Host-native Ingresses (open-webui, etc.) are never
+# evaluated.
+#
+# Rule, derived per-namespace: in namespace "vcluster-ec-00" (vcluster "ec-00"),
+# every Ingress rule host must be   ec00-<app>.<domain>
+#   - appPrefix = vcluster name with dashes removed + "-"   (ec-00 -> "ec00-")
+#   - this naturally forbids the API hosts ec-NN.<domain> (they don't start "ecNN-")
+#     and any other tenant's prefix, and forbids wildcards/empty hosts.
+# A defaultBackend is rejected too (it would be a host-independent catch-all).
+#
+# `<domain>` is the literal below; scripts/10-tenant-isolation.sh (and install.sh)
+# sed-replace it with the chosen DOMAIN, same as external-dns.yaml.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: vcluster-tenant-ingress-isolation
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["networking.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["ingresses"]
+  matchConditions:
+    - name: in-vcluster-namespace
+      expression: "object.metadata.namespace.startsWith('vcluster-')"
+    - name: is-synced-tenant-ingress
+      expression: "has(object.metadata.labels) && 'vcluster.loft.sh/managed-by' in object.metadata.labels"
+  variables:
+    - name: vcname
+      expression: "object.metadata.namespace.substring(9)"      # strip leading 'vcluster-'
+    - name: appPrefix
+      expression: "variables.vcname.replace('-', '') + '-'"      # ec-00 -> 'ec00-'
+  validations:
+    - expression: "!has(object.spec.defaultBackend)"
+      message: "tenant Ingress must not set spec.defaultBackend (it would be a host-independent catch-all)"
+    - expression: "has(object.spec.rules) && size(object.spec.rules) > 0"
+      message: "tenant Ingress must declare at least one host rule"
+    - expression: >-
+        !has(object.spec.rules) || object.spec.rules.all(r,
+          has(r.host) && r.host != '' &&
+          r.host.startsWith(variables.appPrefix) &&
+          r.host.endsWith('.nicolfo.it')
+        )
+      messageExpression: >-
+        "tenant Ingress hosts in namespace " + object.metadata.namespace +
+        " must match <vcname-without-dashes>-<app>.nicolfo.it (this vcluster's own prefix only)"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: vcluster-tenant-ingress-isolation
+spec:
+  policyName: vcluster-tenant-ingress-isolation
+  validationActions: ["Deny"]

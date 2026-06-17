@@ -33,3 +33,9 @@ sync:
       enabled: true    # Ingresses created inside the vcluster are mirrored to the
                        # host namespace and served by the host Traefik controller.
                        # Tenants expose apps at e.g. <app>.ec-0X.nicolfo.it.
+  fromHost:
+    storageClasses:
+      enabled: true    # Mirror host StorageClasses (incl. "local-path") into the
+                       # vcluster read-only, so tenants can `kubectl get sc` and
+                       # reference them. Actual provisioning still happens on the
+                       # host: synced PVCs preserve their storageClassName.

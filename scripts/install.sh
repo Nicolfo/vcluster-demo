@@ -61,27 +61,31 @@ echo
 
 # 1) vcluster CLI -------------------------------------------------------------
 if ! command -v vcluster >/dev/null 2>&1; then
-  echo ">> [1/5] Installing vcluster CLI"
+  echo ">> [1/6] Installing vcluster CLI"
   "$here/00-install-cli.sh"
 else
-  echo ">> [1/5] vcluster CLI present ($(vcluster version 2>/dev/null | head -1))"
+  echo ">> [1/6] vcluster CLI present ($(vcluster version 2>/dev/null | head -1))"
 fi
 
 # 2) the virtual clusters -----------------------------------------------------
-echo ">> [2/5] Creating ${COUNT} vclusters"
+echo ">> [2/6] Creating ${COUNT} vclusters"
 "$here/06-create-many.sh" "$PREFIX" "$COUNT"
 
 # 3) dedicated cloudflared connector (reusing the tunnel) ---------------------
-echo ">> [3/5] Deploying cloudflared connector (tunnel ${TUNNEL_ID})"
+echo ">> [3/6] Deploying cloudflared connector (tunnel ${TUNNEL_ID})"
 TUNNEL_ID="$TUNNEL_ID" CRED_FILE="$CRED_FILE" "$here/../cloudflared/deploy-dedicated-connector.sh"
 
 # 4) External-DNS -------------------------------------------------------------
-echo ">> [4/5] Deploying External-DNS for ${DOMAIN}"
+echo ">> [4/6] Deploying External-DNS for ${DOMAIN}"
 CF_API_TOKEN="$CF_API_TOKEN" DOMAIN="$DOMAIN" TUNNEL_CNAME="$TUNNEL_CNAME" \
   "$here/08-deploy-external-dns.sh"
 
-# 5) per-vcluster: API IngressRoute + DNS route + kubeconfig ------------------
-echo ">> [5/5] Exposing each vcluster API + minting kubeconfigs"
+# 5) tenant-isolation admission policy (host API server, no Kyverno) ----------
+echo ">> [5/6] Applying tenant Ingress isolation policy"
+DOMAIN="$DOMAIN" "$here/10-tenant-isolation.sh"
+
+# 6) per-vcluster: API IngressRoute + DNS route + kubeconfig ------------------
+echo ">> [6/6] Exposing each vcluster API + minting kubeconfigs"
 mkdir -p "$here/../ingress" "$here/../kubeconfigs"
 failed=()
 for i in $(seq 0 $((COUNT - 1))); do

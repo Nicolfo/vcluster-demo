@@ -107,9 +107,16 @@ annotation. Both live in `external-dns/external-dns.yaml` and
 | Tenant publishes an app | apply an `Ingress` inside the vcluster — class `traefik`, host `<vc>-<app>.nicolfo.it`, **+ target annotation** (see `examples/tenant-app-ingress.yaml`) |
 | Revoke a kubeconfig | `vcluster connect <name> -n <ns> -- kubectl -n kube-system delete sa admin-user` |
 | Delete a vcluster | `vcluster delete <name> --namespace vcluster-<name>` (or `./scripts/uninstall.sh` for the whole stack) |
+| Tenant Ingress isolation | `DOMAIN=<domain> ./scripts/10-tenant-isolation.sh` (apply) / `DELETE=1 …` (remove) |
 
 ## 6. Constraints / gotchas
 - **App hostnames one label deep** (`x.nicolfo.it`) for TLS (Universal SSL).
+- **Tenant Ingress isolation** is enforced on the host by a native
+  `ValidatingAdmissionPolicy` (`policy/tenant-isolation.yaml`, no Kyverno/pods): a
+  synced Ingress in `vcluster-ec-00` may only use hosts `ec00-<app>.<domain>`, so a
+  tenant can't hijack another vcluster's API host `ec-NN.<domain>`. A rejected host
+  simply never syncs to the host (the syncer logs the admission error); the tenant's
+  own kube-API access is unaffected.
 - Keep `--default-targets` and the app target annotation equal to the tunnel CNAME (§3).
 - The **production tunnel `f7f3c592` is independent** — if you ever added a temporary
   catch-all to it during setup, remove it; vcluster traffic uses the `vcluster` tunnel.

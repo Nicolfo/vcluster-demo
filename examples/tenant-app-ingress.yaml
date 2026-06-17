@@ -42,7 +42,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: ec00-web.nicolfo.it          # <vc>-<app>.nicolfo.it, one label deep
+    - host: ec02-web.ff26.it         # <vc>-<app>.nicolfo.it, one label deep
       http:
         paths:
           - path: /

@@ -17,8 +17,10 @@ for i in $(seq 0 $((COUNT - 1))); do names+=("$(printf "%s-%02d" "$PREFIX" "$i")
 
 echo ">> Creating ${COUNT} vclusters: ${names[0]} .. ${names[-1]} (context ${HOST_CONTEXT})"
 for name in "${names[@]}"; do
+  # --upgrade: create if missing, otherwise apply the (possibly changed) values
+  # to the existing vcluster in place. Makes this script / install.sh re-runnable.
   vcluster create "$name" --namespace "vcluster-$name" \
-    --context "$HOST_CONTEXT" --values "$VALUES" \
+    --context "$HOST_CONTEXT" --values "$VALUES" --upgrade \
     --connect=false --add=false >"/tmp/vc-$name.log" 2>&1 &
 done
 wait
