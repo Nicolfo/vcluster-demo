@@ -6,3 +6,7 @@ kubeconfigs/
 
 # Generated per-vcluster IngressRoute manifests — re-created by install.sh.
 ingress/ec-*.yaml
+
+# Access bundles contain live Argo CD + Harbor credentials — never commit them.
+bundles/
+*.zip
