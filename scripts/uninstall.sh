@@ -19,8 +19,13 @@
 #
 # Env (all optional):
 #   HOST_CONTEXT (xeon-local)  PREFIX (ec)  COUNT (10)
-#   TUNNEL_ID (82051912…)      DOMAIN (nicolfo.it, only used by PURGE_DNS)
+#   TUNNEL_ID (82051912…)      DOMAIN (prompted when PURGE_DNS=1; pre-set to skip)
 #   PURGE_DNS (0)              LOCAL_CLEAN (1)
+#
+# Platform apps (Argo CD, etc.) live INSIDE each vcluster, so they are removed
+# when their vcluster is deleted (step 2); their <vc>-<app>.<domain> DNS records
+# are CNAMEs to the tunnel and are removed by PURGE_DNS. To remove platform apps
+# from a vcluster WITHOUT deleting the vcluster, use 12-uninstall-platform.sh.
 #
 # Usage: ./scripts/uninstall.sh
 set -euo pipefail
@@ -30,19 +35,47 @@ HOST_CONTEXT="${HOST_CONTEXT:-xeon-local}"
 PREFIX="${PREFIX:-ec}"
 COUNT="${COUNT:-10}"
 TUNNEL_ID="${TUNNEL_ID:-82051912-b874-49e9-955b-7a73552b75bc}"
-DOMAIN="${DOMAIN:-nicolfo.it}"
 PURGE_DNS="${PURGE_DNS:-0}"
 LOCAL_CLEAN="${LOCAL_CLEAN:-1}"
 TUNNEL_CNAME="${TUNNEL_ID}.cfargotunnel.com"
 K="kubectl --context ${HOST_CONTEXT}"
+
+# ---- prompt helper: ask VAR "label" "default" [secret] -----------------------
+# (mirrors install.sh; if VAR is already set in the env, the prompt is skipped)
+ask() {
+  local var="$1" label="$2" def="${3:-}" secret="${4:-}" cur="${!1:-}" ans
+  [[ -n "$cur" ]] && { echo ">> ${label}: (from env)"; return; }
+  if [[ "$secret" == "secret" ]]; then
+    read -rsp "${label}: " ans; echo
+  else
+    read -rp "${label}$( [[ -n "$def" ]] && echo " [${def}]" ): " ans
+  fi
+  printf -v "$var" '%s' "${ans:-$def}"
+}
 
 echo "=== vcluster public-access uninstaller (context ${HOST_CONTEXT}) ==="
 echo ">> tunnel ${TUNNEL_ID} and its credentials will be KEPT for reuse"
 
 # 0) optional: delete every Cloudflare DNS record that points at this tunnel ---
 if [[ "$PURGE_DNS" == "1" ]]; then
+  # The zone is required and must be the one you actually published under — ask
+  # for it (env DOMAIN pre-fills and skips the prompt for non-interactive runs).
+  ask DOMAIN "Cloudflare zone to purge records from (e.g. ff26.it)" "nicolfo.it"
   echo ">> [0] Purging DNS records targeting ${TUNNEL_CNAME} in zone ${DOMAIN}"
-  TOKEN="${CF_API_TOKEN:-$($K -n external-dns get secret cloudflare-api-token -o jsonpath='{.data.token}' 2>/dev/null | base64 -d)}"
+  # Prefer CF_API_TOKEN, else the external-dns secret. If neither exists (e.g.
+  # external-dns was already removed by a previous run), prompt for the token
+  # instead of silently skipping the purge.
+  # NB: the secret lookup must not abort the script — with `set -e`+`pipefail`,
+  # a failing kubectl (namespace already gone) would otherwise kill the run here.
+  TOKEN="${CF_API_TOKEN:-}"
+  if [[ -z "$TOKEN" ]]; then
+    TOKEN="$($K -n external-dns get secret cloudflare-api-token \
+              -o jsonpath='{.data.token}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+  fi
+  if [[ -z "$TOKEN" ]]; then
+    echo "   (external-dns secret not found — enter a token to purge, or leave blank to skip)"
+    ask TOKEN "Cloudflare API token (Zone:DNS:Edit on ${DOMAIN})" "" secret
+  fi
   if [[ -z "$TOKEN" ]]; then
     echo "   !! no Cloudflare token available — skipping DNS purge"
   else

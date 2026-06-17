@@ -5,6 +5,7 @@
 #   - the dedicated, locally-managed cloudflared connector (reuses an existing tunnel)
 #   - External-DNS (Cloudflare), scoped to your DOMAIN and pointing at the tunnel
 #   - per-vcluster API IngressRoute + DNS route + a ready-to-share kubeconfig
+#   - platform apps (everything under platform/<app>/) installed in each vcluster
 #
 # It asks for the two things that MUST be provided:
 #   1. the DOMAIN to publish under (e.g. example.com)
@@ -49,6 +50,7 @@ ask CRED_FILE    "Tunnel credentials JSON file"          "$HOME/.cloudflared/${T
 ask PREFIX       "vcluster name prefix"                  "ec"
 ask COUNT        "how many vclusters"                    "10"
 ask TTL          "kubeconfig token TTL (seconds)"        "86400"
+ask INSTALL_PLATFORM "install platform apps in each vcluster (1/0)" "1"
 
 TUNNEL_CNAME="${TUNNEL_ID}.cfargotunnel.com"
 export HOST_CONTEXT
@@ -61,33 +63,34 @@ echo
 
 # 1) vcluster CLI -------------------------------------------------------------
 if ! command -v vcluster >/dev/null 2>&1; then
-  echo ">> [1/6] Installing vcluster CLI"
+  echo ">> [1/7] Installing vcluster CLI"
   "$here/00-install-cli.sh"
 else
-  echo ">> [1/6] vcluster CLI present ($(vcluster version 2>/dev/null | head -1))"
+  echo ">> [1/7] vcluster CLI present ($(vcluster version 2>/dev/null | head -1))"
 fi
 
 # 2) the virtual clusters -----------------------------------------------------
-echo ">> [2/6] Creating ${COUNT} vclusters"
+echo ">> [2/7] Creating ${COUNT} vclusters"
 "$here/06-create-many.sh" "$PREFIX" "$COUNT"
 
 # 3) dedicated cloudflared connector (reusing the tunnel) ---------------------
-echo ">> [3/6] Deploying cloudflared connector (tunnel ${TUNNEL_ID})"
+echo ">> [3/7] Deploying cloudflared connector (tunnel ${TUNNEL_ID})"
 TUNNEL_ID="$TUNNEL_ID" CRED_FILE="$CRED_FILE" "$here/../cloudflared/deploy-dedicated-connector.sh"
 
 # 4) External-DNS -------------------------------------------------------------
-echo ">> [4/6] Deploying External-DNS for ${DOMAIN}"
+echo ">> [4/7] Deploying External-DNS for ${DOMAIN}"
 CF_API_TOKEN="$CF_API_TOKEN" DOMAIN="$DOMAIN" TUNNEL_CNAME="$TUNNEL_CNAME" \
   "$here/08-deploy-external-dns.sh"
 
 # 5) tenant-isolation admission policy (host API server, no Kyverno) ----------
-echo ">> [5/6] Applying tenant Ingress isolation policy"
+echo ">> [5/7] Applying tenant Ingress isolation policy"
 DOMAIN="$DOMAIN" "$here/10-tenant-isolation.sh"
 
 # 6) per-vcluster: API IngressRoute + DNS route + kubeconfig ------------------
-echo ">> [6/6] Exposing each vcluster API + minting kubeconfigs"
+echo ">> [6/7] Exposing each vcluster API + minting kubeconfigs"
 mkdir -p "$here/../ingress" "$here/../kubeconfigs"
 failed=()
+platform_failed=()
 for i in $(seq 0 $((COUNT - 1))); do
   n="$(printf "%s-%02d" "$PREFIX" "$i")"
   host="${n}.${DOMAIN}"                       # one label deep -> Universal SSL covers it
@@ -102,11 +105,24 @@ for i in $(seq 0 $((COUNT - 1))); do
     SERVER="https://${host}" CLUSTER_ROLE=cluster-admin TTL="$TTL" PUBLIC_TLS=1 \
       "$here/03-grant-access.sh" "$n" "vcluster-${n}" "$here/../kubeconfigs/kubeconfig-${n}.yaml" >/dev/null
   ); then
-    echo "     !! ${n} failed — skipping"; failed+=("$n")
+    echo "     !! ${n} failed — skipping"; failed+=("$n"); continue
+  fi
+
+  # 7) platform apps inside this vcluster (best-effort: a platform failure must
+  #    not invalidate an otherwise-working vcluster). Skipped if INSTALL_PLATFORM=0.
+  if [[ "${INSTALL_PLATFORM:-1}" == "1" ]]; then
+    echo "   >> [7/7] ${n}: installing platform apps"
+    if ! DOMAIN="$DOMAIN" TUNNEL_ID="$TUNNEL_ID" HOST_CONTEXT="$HOST_CONTEXT" \
+         "$here/11-install-platform.sh" "$n"; then
+      echo "     !! ${n}: platform install had errors"; platform_failed+=("$n")
+    fi
   fi
 done
 [[ ${#failed[@]} -gt 0 ]] && echo ">> WARNING: failed vclusters: ${failed[*]}"
+[[ ${#platform_failed[@]} -gt 0 ]] && echo ">> WARNING: platform install issues on: ${platform_failed[*]}"
 
 echo
 echo ">> Done. Verify e.g.:  kubectl --kubeconfig kubeconfigs/kubeconfig-${PREFIX}-00.yaml get ns"
 echo ">> Tenant apps: apply an Ingress (class traefik, host <vc>-<app>.${DOMAIN}) — see examples/tenant-app-ingress.yaml"
+[[ "${INSTALL_PLATFORM:-1}" == "1" ]] && \
+  echo ">> Platform apps installed per vcluster, e.g. Argo CD at  https://${PREFIX}-00-argocd.${DOMAIN}  (admin pw: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)"

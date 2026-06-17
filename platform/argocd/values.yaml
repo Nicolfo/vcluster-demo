@@ -1,0 +1,20 @@
+# Argo CD Helm values -- TEMPLATE.
+# Rendered per-vcluster by platform/argocd/install.sh (via envsubst):
+#   ${APP_HOST}      public hostname for this Argo CD, e.g. ec-00-argocd.ff26.it
+#   ${TUNNEL_CNAME}  Cloudflare tunnel target,        e.g. <tunnel-id>.cfargotunnel.com
+global:
+  domain: ${APP_HOST}
+
+configs:
+  params:
+    server.insecure: "true"
+
+server:
+  ingress:
+    enabled: true
+    className: "traefik"
+    annotations:
+      # External-DNS (on the host) sees the synced Ingress and creates the
+      # proxied CNAME ${APP_HOST} -> ${TUNNEL_CNAME} automatically.
+      external-dns.alpha.kubernetes.io/target: ${TUNNEL_CNAME}
+    host: "${APP_HOST}"

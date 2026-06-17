@@ -12,10 +12,13 @@
 # evaluated.
 #
 # Rule, derived per-namespace: in namespace "vcluster-ec-00" (vcluster "ec-00"),
-# every Ingress rule host must be   ec00-<app>.<domain>
-#   - appPrefix = vcluster name with dashes removed + "-"   (ec-00 -> "ec00-")
-#   - this naturally forbids the API hosts ec-NN.<domain> (they don't start "ecNN-")
-#     and any other tenant's prefix, and forbids wildcards/empty hosts.
+# every Ingress rule host must be   ec00-<app>.<domain>  OR  ec-00-<app>.<domain>
+#   - appPrefix       = vcluster name with dashes removed + "-"  (ec-00 -> "ec00-")
+#   - appPrefixDashed = vcluster name as-is + "-"                (ec-00 -> "ec-00-")
+#     (the dashed form is what install.sh's platform apps use, e.g. ec-00-argocd)
+#   - this naturally forbids the API hosts ec-NN.<domain> (they end with a '.', not
+#     a '-', right after the name) and any other tenant's prefix, and forbids
+#     wildcards/empty hosts.
 # A defaultBackend is rejected too (it would be a host-independent catch-all).
 #
 # `<domain>` is the literal below; scripts/10-tenant-isolation.sh (and install.sh)
@@ -43,6 +46,8 @@ spec:
       expression: "object.metadata.namespace.substring(9)"      # strip leading 'vcluster-'
     - name: appPrefix
       expression: "variables.vcname.replace('-', '') + '-'"      # ec-00 -> 'ec00-'
+    - name: appPrefixDashed
+      expression: "variables.vcname + '-'"                       # ec-00 -> 'ec-00-'
   validations:
     - expression: "!has(object.spec.defaultBackend)"
       message: "tenant Ingress must not set spec.defaultBackend (it would be a host-independent catch-all)"
@@ -51,12 +56,12 @@ spec:
     - expression: >-
         !has(object.spec.rules) || object.spec.rules.all(r,
           has(r.host) && r.host != '' &&
-          r.host.startsWith(variables.appPrefix) &&
+          (r.host.startsWith(variables.appPrefix) || r.host.startsWith(variables.appPrefixDashed)) &&
           r.host.endsWith('.nicolfo.it')
         )
       messageExpression: >-
         "tenant Ingress hosts in namespace " + object.metadata.namespace +
-        " must match <vcname-without-dashes>-<app>.nicolfo.it (this vcluster's own prefix only)"
+        " must match <vcname>-<app>.nicolfo.it or <vcname-without-dashes>-<app>.nicolfo.it (this vcluster's own prefix only)"
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
