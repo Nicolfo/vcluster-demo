@@ -1,0 +1,39 @@
+# Harbor Helm values -- TEMPLATE.
+# Rendered by registry/install.sh (via envsubst):
+#   ${HARBOR_HOST}            public hostname, e.g. registry.ff26.it
+#                             (must already resolve to sa4's Traefik so the
+#                              ACME HTTP-01 challenge can reach it)
+#   ${HARBOR_ADMIN_PASSWORD}  initial password for the built-in 'admin' user
+#
+# Target: cluster sa4, ingress class "traefik", TLS issued by the cert-manager
+# ClusterIssuer "letsencrypt" (both already installed on sa4).
+expose:
+  type: ingress
+  tls:
+    enabled: true
+    # certSource=secret: Harbor's Ingress references the secret below as its TLS
+    # secret. cert-manager (triggered by the cluster-issuer annotation) runs the
+    # HTTP-01 challenge and populates that secret -- we do NOT pre-create it.
+    certSource: secret
+    secret:
+      secretName: harbor-tls
+  ingress:
+    hosts:
+      core: ${HARBOR_HOST}
+    className: traefik
+    annotations:
+      # Hand TLS to Let's Encrypt via the pre-installed ClusterIssuer.
+      cert-manager.io/cluster-issuer: letsencrypt
+      # Allow arbitrarily large image-layer pushes.
+      ingress.kubernetes.io/proxy-body-size: "0"
+
+# Public URL shown in the UI and embedded in docker/helm commands + tokens.
+externalURL: https://${HARBOR_HOST}
+
+# Initial 'admin' password (override with HARBOR_ADMIN_PASSWORD; change after first login).
+harborAdminPassword: "${HARBOR_ADMIN_PASSWORD}"
+
+# Persist on sa4's default StorageClass (local-path). Keep PVCs on `helm uninstall`.
+persistence:
+  enabled: true
+  resourcePolicy: keep
