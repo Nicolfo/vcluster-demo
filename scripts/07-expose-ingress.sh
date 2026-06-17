@@ -9,7 +9,7 @@
 # Set OUT=<file> to also write the manifest to disk.
 #
 # NOTE: you still need a Cloudflare tunnel route + DNS for <hostname> pointing at
-#       https://traefik.ingress.svc.cluster.local:443 (see docs/remote-access-via-ingress.md).
+#       https://traefik.ingress.svc.cluster.local:443 (see docs/architecture.md).
 set -euo pipefail
 
 NAME="${1:?usage: 07-expose-ingress.sh <name> <hostname> [namespace]}"

@@ -6,8 +6,7 @@ reusable scripts to create, connect to, share, and delete virtual clusters.
 
 > **Start here:** [`docs/architecture.md`](./docs/architecture.md) — the authoritative
 > architecture, the public-access design decision, and the exact step-by-step runbook.
-> Companion docs: [`docs/external-dns.md`](./docs/external-dns.md) (auto-DNS for tenant apps),
-> [`docs/remote-access-via-ingress.md`](./docs/remote-access-via-ingress.md) (kubeconfig over ingress).
+> Companion doc: [`docs/external-dns.md`](./docs/external-dns.md) (auto-DNS for tenant apps).
 
 ---
 
@@ -153,8 +152,6 @@ point at something the recipient can actually reach:
   SERVER=https://<vc>.nicolfo.it CLUSTER_ROLE=cluster-admin TTL=86400 PUBLIC_TLS=1 \
     ./scripts/03-grant-access.sh <vc> vcluster-<vc> ./kubeconfig-<vc>.yaml
   ```
-  (The older `docs/remote-access-via-ingress.md` describes the original single-`demo`
-  walkthrough and the tunnel-vs-dashboard lessons; architecture.md supersedes it.)
 - **Quick alternative — NodePort (same LAN):**
   `kubectl patch svc demo -n vcluster-demo -p '{"spec":{"type":"NodePort"}}'`
   then `SERVER=https://192.168.0.159:<nodePort>` (add `--insecure` to the kubeconfig).

@@ -2,3 +2,7 @@
 kubeconfig-*.yaml
 *.kubeconfig
 kubeconfigs/
+.claude/
+
+# Generated per-vcluster IngressRoute manifests — re-created by install.sh.
+ingress/ec-*.yaml
