@@ -1,0 +1,4 @@
+# Generated kubeconfigs contain live SA tokens — never commit them.
+kubeconfig-*.yaml
+*.kubeconfig
+kubeconfigs/

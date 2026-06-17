@@ -1,0 +1,54 @@
+# Example: a tenant publishing an app from INSIDE their vcluster to the internet.
+# Apply this with the vcluster's kubeconfig (e.g. kubeconfigs/kubeconfig-ec-00.yaml),
+# NOT against the host cluster.
+#
+# Requirements for auto-publishing:
+#   1. ingressClassName: traefik
+#   2. host is ONE label deep:  <vc>-<app>.nicolfo.it  (Universal SSL covers it)
+#   3. the external-dns target annotation -> the tunnel (this is what makes
+#      External-DNS create the DNS record; --default-targets is NOT honored by
+#      the ingress source, so the annotation is required).
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: web } }
+  template:
+    metadata: { labels: { app: web } }
+    spec:
+      containers:
+        - name: web
+          image: nginx:alpine
+          ports: [{ containerPort: 80 }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+spec:
+  selector: { app: web }
+  ports: [{ port: 80, targetPort: 80 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web
+  annotations:
+    # REQUIRED: point the record at the Cloudflare tunnel.
+    external-dns.alpha.kubernetes.io/target: 82051912-b874-49e9-955b-7a73552b75bc.cfargotunnel.com
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: ec00-web.nicolfo.it          # <vc>-<app>.nicolfo.it, one label deep
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 80

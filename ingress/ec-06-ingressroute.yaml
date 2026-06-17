@@ -1,0 +1,26 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: ServersTransport
+metadata:
+  name: ec-06-backend
+  namespace: vcluster-ec-06
+spec:
+  insecureSkipVerify: true
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ec-06-api
+  namespace: vcluster-ec-06
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`ec-06.ff26.it`)
+      kind: Rule
+      services:
+        - name: ec-06
+          port: 443
+          scheme: https
+          serversTransport: ec-06-backend
+  tls: {}

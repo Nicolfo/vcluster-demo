@@ -1,0 +1,35 @@
+# vCluster configuration for the "xeon-local" host cluster.
+# Docs: https://www.vcluster.com/docs
+#
+# This host cluster has:
+#   - storageClass "local-path" (NOT marked default) -> set explicitly
+#   - traefik ingress controller
+#   - single node (nicolfo-xeon)
+#
+# Schema reference (v0.34.x): https://www.vcluster.com/docs/vcluster/configure/vcluster-yaml
+
+controlPlane:
+  # The virtual cluster's control plane runs as a StatefulSet on the host.
+  # Its data (embedded etcd / sqlite) lives on a PVC, so pin the storageClass
+  # since the host has no default StorageClass.
+  statefulSet:
+    persistence:
+      volumeClaim:
+        enabled: true
+        storageClass: local-path
+        size: 5Gi
+  # Backing store: OSS default is SQLite persisted on the PVC above.
+  # (Embedded etcd is a vCluster Pro feature and requires platform login.)
+  backingStore:
+    database:
+      embedded:
+        enabled: true
+
+# Sync settings control which resources flow between virtual <-> host cluster.
+# Defaults are sensible for a demo; uncomment to expose extra resources.
+sync:
+  toHost:
+    ingresses:
+      enabled: true    # Ingresses created inside the vcluster are mirrored to the
+                       # host namespace and served by the host Traefik controller.
+                       # Tenants expose apps at e.g. <app>.ec-0X.nicolfo.it.

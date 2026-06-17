@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(kubectl version *)",
+      "Bash(helm version *)",
+      "Bash(vcluster version *)",
+      "Bash(kubectl config *)"
+    ]
+  }
+}
